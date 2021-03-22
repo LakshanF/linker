@@ -295,12 +295,84 @@ namespace Mono.Linker.Steps
 			MarkEntireTypeInternal (type, includeBaseTypes, includeInterfaceTypes, reason, sourceLocationMember);
 		}
 
+		/// <summary>
+		/// Attempts to create a custom attribute in targetModule
+		/// </summary>
+		/// <param name="targetModule"></param>
+		/// <returns></returns>
+		private CustomAttribute CreateLinkerTrimAttribute (ModuleDefinition targetModule)
+		{
+
+			CustomAttribute newAttribute;
+
+			//@TODO - cache this
+			AssemblyDefinition coreLibAssembly = _context.GetLoadedAssembly ("System.Private.CoreLib");
+			ModuleDefinition corelibMainModule = coreLibAssembly.MainModule;
+
+			TypeReference systemAttributeRef = new TypeReference ("System", "Attribute", corelibMainModule, targetModule.TypeSystem.CoreLibrary);
+			TypeReference systemAttribute = corelibMainModule.MetadataResolver.Resolve (systemAttributeRef);
+			//systemAttribute = corelibMainModule.ImportReference (systemAttribute);
+			systemAttribute = targetModule.ImportReference (systemAttribute);
+
+			if (systemAttribute == null)
+				throw new System.ApplicationException ("System.Attribute is not found in " + targetModule.TypeSystem.CoreLibrary.Name);
+
+			MethodReference systemAttributeDefaultConstructorRef = new MethodReference (".ctor", corelibMainModule.TypeSystem.Void, systemAttributeRef);
+			MethodReference systemAttributeDefaultConstructor = corelibMainModule.MetadataResolver.Resolve (systemAttributeDefaultConstructorRef);
+			//systemAttributeDefaultConstructor = corelibMainModule.ImportReference (systemAttributeDefaultConstructor);
+			systemAttributeDefaultConstructor = targetModule.ImportReference (systemAttributeDefaultConstructor);
+
+			if (systemAttributeDefaultConstructor == null)
+				throw new System.ApplicationException ("System.Attribute has no default constructor");
+
+			//@TODO - how do we dynamically import reference Attribute
+			//var v1 = targetModule.ImportReference (systemAttribute);
+			TypeDefinition bypassNGenAttributeDef = new TypeDefinition ("System.Diagnostics.CodeAnalysis", "LaksLinkerTypeTrimAttribute", TypeAttributes.NotPublic | TypeAttributes.Sealed, systemAttribute);
+
+			targetModule.Types.Add (bypassNGenAttributeDef);
+
+			if (Annotations.GetAction (targetModule.Assembly) == AssemblyAction.Copy) {
+				Annotations.SetAction (targetModule.Assembly, AssemblyAction.Save);
+			}
+
+			const MethodAttributes ctorAttributes = MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName;
+			MethodDefinition bypassNGenAttributeDefaultConstructor = new MethodDefinition (".ctor", ctorAttributes, coreLibAssembly.MainModule.TypeSystem.Void);
+			var instructions = bypassNGenAttributeDefaultConstructor.Body.Instructions;
+			instructions.Add (Instruction.Create (OpCodes.Ldarg_0));
+			instructions.Add (Instruction.Create (OpCodes.Call, systemAttributeDefaultConstructor));
+			instructions.Add (Instruction.Create (OpCodes.Ret));
+
+			bypassNGenAttributeDef.Methods.Add (bypassNGenAttributeDefaultConstructor);
+			MethodReference defaultConstructorReference = targetModule.ImportReference (bypassNGenAttributeDefaultConstructor);
+			newAttribute = new CustomAttribute (defaultConstructorReference);
+			return newAttribute;
+		}
+
+		static CustomAttribute lakscorlibAttribute;
+		static CustomAttribute bypassNGenAttribute;
+		static HashSet<string> lakstypetracker = new HashSet<string> ();
+		static Dictionary<string, CustomAttribute> laksattributeracker = new Dictionary<string, CustomAttribute> ();
 		private void MarkEntireTypeInternal (TypeDefinition type, bool includeBaseTypes, bool includeInterfaceTypes, in DependencyInfo reason, IMemberDefinition sourceLocationMember)
 		{
 #if DEBUG
 			if (!_entireTypeReasons.Contains (reason.Kind))
 				throw new InternalErrorException ($"Unsupported type dependency '{reason.Kind}'.");
 #endif
+
+			string lakstypeInfo = $"{type.Module.Assembly.FullName}#{type.FullName}";
+			if (!lakstypetracker.Contains (lakstypeInfo)) {// && lakstypeInfo.Contains("System.Private.CoreLib")) {
+				lakstypetracker.Add (lakstypeInfo);
+				CustomAttribute assemblyTrimAttrbute;
+				if (!laksattributeracker.TryGetValue (type.Module.Assembly.FullName, out assemblyTrimAttrbute)) {
+					assemblyTrimAttrbute = CreateLinkerTrimAttribute (type.Module);
+					laksattributeracker.Add (type.Module.Assembly.FullName, assemblyTrimAttrbute);
+				}
+				type.CustomAttributes.Add (assemblyTrimAttrbute);
+				System.IO.File.AppendAllText (@"D:\work\Core\Test\Feb_19\SerializerTest\Debug_EntireTypes.txt", $"{lakstypeInfo}{Environment.NewLine}");
+				//System.IO.File.AppendAllText (@"D:\work\Core\Test\Feb_19\AttributeTest\Debug_EntireTypes.txt", $"{lakstypeInfo}{Environment.NewLine}");
+			}
+
+
 
 			if (!_entireTypesMarked.Add (type))
 				return;

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Mono.Linker": {
+      "commandName": "Project",
+      "commandLineArgs": "@D:\\work\\Core\\Test\\Feb_19\\SerializerTest\\trim.rsp"
+    }
+  }
+}
