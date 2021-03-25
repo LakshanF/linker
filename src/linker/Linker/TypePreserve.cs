@@ -34,6 +34,7 @@ namespace Mono.Linker
 		Nothing, // This is actually Declaration
 		All,
 		Fields,
-		Methods
+		Methods,
+		MarkEntireType
 	}
 }

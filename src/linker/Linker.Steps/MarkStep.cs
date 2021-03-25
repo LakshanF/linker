@@ -360,7 +360,7 @@ namespace Mono.Linker.Steps
 #endif
 
 			string lakstypeInfo = $"{type.Module.Assembly.FullName}#{type.FullName}";
-			if (!lakstypetracker.Contains (lakstypeInfo)) {// && lakstypeInfo.Contains("System.Private.CoreLib")) {
+			if (!type.FullName.Equals("<Module>") && !lakstypetracker.Contains (lakstypeInfo)) {// && lakstypeInfo.Contains("System.Private.CoreLib")) {
 				lakstypetracker.Add (lakstypeInfo);
 				CustomAttribute assemblyTrimAttrbute;
 				if (!laksattributeracker.TryGetValue (type.Module.Assembly.FullName, out assemblyTrimAttrbute)) {
@@ -2445,6 +2445,10 @@ namespace Mono.Linker.Steps
 				var di = new DependencyInfo (DependencyKind.TypePreserve, type);
 
 				switch (preserve) {
+				case TypePreserve.MarkEntireType:
+					MarkEntireType (type, includeBaseTypes: false, includeInterfaceTypes: false, di, null);
+					return;
+
 				case TypePreserve.All:
 					MarkFields (type, true, di);
 					MarkMethods (type, di, type);
